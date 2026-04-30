@@ -1,0 +1,121 @@
+---
+alwaysApply: true
+---
+
+---
+description: Project-wide rules for Mikado. Apply to all files unless overridden.
+alwaysApply: true
+---
+
+# Mikado — Project Rules
+
+## Identity
+
+You are Cursor working with Devansh on **Mikado**, a hackathon project for the Cursor × Briefcase London hackathon (30 April 2026, Halkin Offices). The hackathon's theme is **"human out of the loop in high-risk financial workflows"** and Mikado is competing in **Track 1 (Money Movement)**.
+
+Total build time: ~3 hours 15 minutes. Solo developer. Demo at 9:05 PM.
+
+## Source of truth
+
+The canonical specs are in `docs/`:
+
+- `docs/PRD.md` — what we're building, the demo path (§5 is locked), the cut list (§7), the pitch (§9)
+- `docs/context.md` — strategic background, judges, why we win
+- `docs/architecture.md` — system design, file tree, build order
+- `docs/backend.md` — API routes, agent loop, signing, schemas
+- `docs/frontend.md` — design system, components, sprite usage
+
+**If a docs/ file conflicts with these rules, the docs/ file wins.** If something is unspecified anywhere, ask before improvising.
+
+## Non-negotiables (do not break these)
+
+1. **The 90-second demo path in PRD.md §5 is locked.** Every line of code must serve it. If asked to add a feature outside the demo path, push back.
+2. **Real Ed25519 signing via `node:crypto`.** Never mock the signature. The cryptographic verifiability is the product.
+3. **Real Anthropic API calls in `extract.ts`.** Use `claude-opus-4-7` with structured tool-use. Never mock the LLM call.
+4. **Mock everything else.** Bank, suppliers, invoices — all in-memory or file-seeded. Do not pull in Plaid/TrueLayer/Stripe.
+5. **Single Next.js app, App Router.** Do not introduce a separate backend, do not add NestJS, do not add Postgres.
+6. **No auth.** No login screens, no user accounts, no signup.
+7. **No mobile.** Web only.
+8. **No premature abstraction.** Hardcode values that aren't going to change in the demo. Inline what makes sense to inline.
+
+## Stack
+
+- **Framework:** Next.js 15, App Router, TypeScript strict
+- **Runtime:** Node (for crypto). API routes use `export const runtime = 'nodejs';`
+- **Styling:** Tailwind for layout, plain CSS in `globals.css` for the retro aesthetic. No CSS-in-JS libraries, no shadcn unless one specific component would save real time.
+- **State:** Plain React `useState`, server-side singletons in module scope. No Redux, no Zustand, no React Query.
+- **Streaming:** Native `ReadableStream` + SSE for the agent run. No `socket.io`.
+- **Data:** TypeScript files in `/data/`. No JSON files. No database.
+
+## Coding conventions
+
+- **Imports:** Use `@/` alias for everything inside the project. Group imports: external, then `@/lib/...`, then `@/components/...`, then relative.
+- **Async:** `async/await` everywhere. No raw `.then()` chains except in narrowly-scoped one-liners.
+- **Errors:** In API routes, catch and return JSON error objects with HTTP status. In agent code, throw — the orchestrator catches.
+- **Logging:** `console.log` is fine for the hackathon. Do not add a logging library.
+- **Comments:** Comment *intent*, not behaviour. Especially comment why something diverges from how you'd do it in production.
+- **Types:** Types live in `/lib/types.ts`. Schemas use TypeScript `type`, not `interface`, except where extension is needed.
+- **Files:** Keep files under 200 lines. Split early. Each phase of the agent is its own file.
+
+## Behavioural rules for you (Cursor)
+
+- **Read all six docs before writing code.** Confirm understanding by summarising in 5 bullets before any file is created.
+- **Build in the order from `docs/architecture.md` §"Build order".** Do not jump ahead to UI before the spine works end-to-end.
+- **Confirm major architectural choices** before deviating from docs/. If a doc is silent on something, say so and ask.
+- **Mention which doc each new file implements**, in the file's first comment, so Devansh can verify mapping.
+- **Don't refactor for elegance during build.** Only refactor if a bug requires it.
+- **When stuck, surface it immediately.** Don't burn 10 minutes silently on an Anthropic API issue. Tell Devansh.
+- **Use background agents** for independent files (data seeds, sprite components, score breakdown formatter). Do NOT use them for the agent loop, crypto, or types.
+- **Time-aware.** When Devansh says "we have N minutes left", refer to `docs/PRD.md` §7 cut list and propose what to drop.
+
+## Forbidden actions
+
+- Do not run `git commit` automatically. Devansh will commit manually.
+- Do not push to a remote without explicit instruction.
+- Do not delete files without explicit instruction.
+- Do not modify `docs/` files unless explicitly asked.
+- Do not add dependencies beyond `@anthropic-ai/sdk`, `uuid`, and their types. If you think a dep would help, ask first.
+- Do not write tests. There is no time. Verify by running the demo.
+- Do not generate an `.eslintrc` or any linting config. We disabled ESLint at scaffold for speed.
+
+## When the user asks for something off-spec
+
+1. Restate the request in your own words
+2. Identify which doc covers it (or note that it doesn't)
+3. Estimate the time cost
+4. Propose: do it, defer it, or skip it (referencing the cut list)
+5. Wait for confirmation before doing it
+
+## Cursor side-quest awareness
+
+There's a "Best use of Cursor" prize bucket at this hackathon. Specifically reward-eligible behaviours:
+- Running multiple Cursor background agents in parallel on independent files
+- Using the Cursor SDK (Composer 2 — 50% off through May 5)
+- Building something that demonstrably uses Cursor as a tool, not just an editor
+
+When you do any of these, suggest Devansh take a screenshot for the submission README.
+
+## The agent loop is sacred
+
+The four phases — extract, retrieve, score, decide — are the product. Get them right above all else.
+
+- `extract` calls Anthropic with structured tool-use. Real API. Real `claude-opus-4-7`.
+- `retrieve` is pure in-memory string similarity. No LLM. No external API (unless Specter is wired in late).
+- `score` is a pure function. No randomness. No LLM. Deterministic given inputs.
+- `decide` is a pure function. Threshold check. Returns `'PAY' | 'REFUSE'`.
+
+If you're tempted to "make this more interesting" by adding LLM calls in `score` or `decide`, **don't**. The whole pitch rests on these being deterministic and auditable. The LLM stochasticity is bounded to extraction.
+
+## The receipt is sacred
+
+Every receipt must:
+- Be signed before it leaves the agent loop
+- Have a stable, canonicalisable JSON shape
+- Round-trip through `signReceipt → verifyReceipt` returning `true`
+- Round-trip through `signReceipt → tamper any byte → verifyReceipt` returning `false`
+
+Test these invariants once when the spine is built. If they don't hold, stop and fix. Everything downstream depends on them.
+
+## Decision-making summary
+
+When in doubt: **does it serve the 90-second demo?** If yes, do it. If no, skip it.
